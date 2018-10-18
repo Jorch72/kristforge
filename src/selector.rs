@@ -1,8 +1,11 @@
 use ::std::str::FromStr;
 use ::error::KristforgeError::{self, InvalidSelector};
 use ::regex::Regex;
+use ::ocl::{Device, Platform};
+use ::ocl::error::Result as OclResult;
+use ::ocl::flags::DeviceType;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum DeviceSelector {
 	All,
 	Platform(usize),
@@ -10,7 +13,35 @@ pub enum DeviceSelector {
 }
 
 impl DeviceSelector {
+	pub fn select_devices<'a>(&self, pool: &'a Vec<(Platform, Vec<Device>)>) -> Vec<&'a Device> {
+		use DeviceSelector::*;
 
+		match self {
+			All => pool.iter().flat_map(|(_, d)| d).collect(),
+			Platform(p) => pool[*p].1.iter().map(|d| d).collect(),
+			Device(p, i) => vec![&pool[*p].1[*i]]
+		}
+	}
+
+	pub fn select_all(selectors: &Vec<Self>) -> OclResult<Vec<Device>> {
+		let mut pool = vec![];
+
+		for p in Platform::list() {
+			pool.push((p, Device::list(p, Some(DeviceType::ALL))?));
+		}
+
+		let mut selected = vec![];
+
+		for selector in selectors {
+			for device in selector.select_devices(&pool) {
+				if !selected.contains(device) {
+					selected.push(*device);
+				}
+			}
+		};
+
+		Ok(selected)
+	}
 }
 
 impl FromStr for DeviceSelector {
